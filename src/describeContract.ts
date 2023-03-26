@@ -1,9 +1,16 @@
 /* eslint-disable no-console */
 /* eslint-disable @typescript-eslint/naming-convention */
-import { isReady, Mina, PrivateKey, type PublicKey } from 'snarkyjs';
+import {
+  isReady,
+  Mina,
+  PrivateKey,
+  type PublicKey,
+  fetchAccount,
+} from 'snarkyjs';
 import { ContractApi, type OffchainStateContract } from '@zkfs/contract-api';
 
 import config from '../config.json';
+import berkeleyAccount from '../keys/berkeley.json';
 import { waitUntilNextBlock } from './network';
 
 interface ContractTestContext<ZkApp extends OffchainStateContract> {
@@ -16,10 +23,16 @@ interface ContractTestContext<ZkApp extends OffchainStateContract> {
   zkApp: ZkApp;
   contractApi: ContractApi;
   waitForNextBlock: () => Promise<void>;
+  fetchAccounts: (publicKey: PublicKey[]) => Promise<void>;
+  fetchEventsZkApp: () => Promise<any>;
 }
 
-const hasProofsEnabled = false;
-const deployToBerkeley = false;
+let hasProofsEnabled = false;
+const deployToBerkeley = true;
+
+if (deployToBerkeley) {
+  hasProofsEnabled = true;
+}
 
 async function withTimer<Result>(
   name: string,
@@ -68,7 +81,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
     beforeEach(() => {
       let localBlockchain = Mina.LocalBlockchain({
         proofsEnabled: hasProofsEnabled,
-        enforceTransactionLimits: false,
+        enforceTransactionLimits: true,
       });
 
       if (deployToBerkeley) {
@@ -84,9 +97,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
       let deployerKey: PrivateKey;
       let deployerAccount: PublicKey;
       if (deployToBerkeley) {
-        deployerKey = PrivateKey.fromBase58(
-          'EKEMLj1pbDV4MGoZXChSp2z1AJuiW5p9YdUY93VYENpMkD8zcrmh'
-        );
+        deployerKey = PrivateKey.fromBase58(berkeleyAccount.privateKey);
       } else {
         // First test account is the deployer
         const { privateKey } = localBlockchain.testAccounts[0];
@@ -97,9 +108,8 @@ function describeContract<ZkApp extends OffchainStateContract>(
       let senderKey: PrivateKey;
       let senderAccount: PublicKey;
       if (deployToBerkeley) {
-        senderKey = PrivateKey.fromBase58(
-          'EKEao8v85te67ezsZbdQQq8hsf8B7NTt55kkbFYFDMKdqasYavPQ'
-        );
+        // todo: use a different account for the sender
+        senderKey = PrivateKey.fromBase58(berkeleyAccount.privateKey);
       } else {
         // Second test account is the deployer
         const { privateKey } = localBlockchain.testAccounts[1];
@@ -109,10 +119,19 @@ function describeContract<ZkApp extends OffchainStateContract>(
 
       async function waitForNextBlock() {
         if (deployToBerkeley) {
+          // provide parameters to overwrite defaults for number of retries and polling interval
           await waitUntilNextBlock();
         } else {
           localBlockchain.setBlockchainLength(
             localBlockchain.getNetworkState().blockchainLength.add(1)
+          );
+        }
+      }
+
+      async function fetchAccounts(publicKeys: PublicKey[]) {
+        if (deployToBerkeley) {
+          await Promise.all(
+            publicKeys.map((publicKey) => fetchAccount({ publicKey }))
           );
         }
       }
@@ -124,6 +143,14 @@ function describeContract<ZkApp extends OffchainStateContract>(
       const zkApp = new Contract(zkAppAddress) as ZkApp;
       const contractApi = new ContractApi();
 
+      async function fetchEventsZkApp(): Promise<any> {
+        if (deployToBerkeley) {
+          return await zkApp.fetchEvents();
+        } else {
+          return localBlockchain.fetchEvents(zkAppAddress);
+        }
+      }
+
       context = {
         deployerAccount,
         deployerKey,
@@ -134,6 +161,8 @@ function describeContract<ZkApp extends OffchainStateContract>(
         zkAppPrivateKey,
         contractApi,
         waitForNextBlock,
+        fetchAccounts,
+        fetchEventsZkApp,
       };
     });
 

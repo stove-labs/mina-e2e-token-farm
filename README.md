@@ -2,6 +2,14 @@
 
 This documentation is WIP.
 
+## How to create a Mina account with funds
+
+The script creates a Mina account and requests a small amount of Mina from the faucet, and then writes the private and public key to `keys/berkeley.json`.
+
+```sh
+npm run requestFaucet
+```
+
 ## How to build
 
 ```sh
