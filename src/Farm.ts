@@ -22,9 +22,11 @@ import {
   Circuit,
   AccountUpdate,
   UInt32,
+  Bool,
 } from 'snarkyjs';
 
 import { Action } from './actions/actions.js';
+import { ProgramProof } from './zkProgram.js';
 
 class DelegatorRecord extends Struct({
   accumulatedRewardPerShareStart: UInt64,
@@ -38,7 +40,7 @@ class FarmData extends Struct({
 
 export class Farm extends OffchainStateContract {
   override rollingStateOptions = {
-    shouldEmitEvents: true,
+    shouldEmitEvents: false,
     shouldEmitPrecondition: true,
     shouldEmitAccountUpdates: true,
   };
@@ -49,6 +51,8 @@ export class Farm extends OffchainStateContract {
   };
   // should be 1_000_000, reduced for testing purposes
   public fixedPointAccuracy = UInt64.from(100);
+
+  public defaultAdmin = PublicKey.from({ x: Field(0), isOdd: Bool(false) });
 
   public static addressToKey = (address: PublicKey): Key<PublicKey> =>
     Key.fromType<PublicKey>(PublicKey, address);
@@ -61,6 +65,8 @@ export class Farm extends OffchainStateContract {
   @state(UInt64) public rewardPerBlock = State<UInt64>();
 
   @state(UInt32) public lastUpdate = State<UInt32>();
+
+  @state(PublicKey) public admin = State<PublicKey>();
 
   // removed this for simplicity
   // @state(UInt64) public paid = State<UInt64>()
@@ -80,6 +86,7 @@ export class Farm extends OffchainStateContract {
 
     this.root.setRootHash(OffchainStateMapRoot.initialRootHash);
     this.actionsHash.set(Reducer.initialActionsHash);
+    this.admin.set(this.defaultAdmin);
 
     // off-chain state
     this.rewardPerBlock.set(UInt64.from(5));
@@ -99,29 +106,68 @@ export class Farm extends OffchainStateContract {
     });
   }
 
-  public getDelegatorRecord(
-    address: PublicKey
-  ): [DelegatorRecord, OffchainState<PublicKey, DelegatorRecord>] {
-    const defaultRecord = new DelegatorRecord({
+  /*
+   *  Setting the admin and lastUpdate to the current block height.
+   *  This method can only be called once.
+   */
+  @method
+  public startFarm(newAdmin: PublicKey) {
+    // set admin
+    const admin = this.admin.get();
+    this.admin.assertEquals(admin);
+    // ensure that startFarm can only be called once
+    admin.assertEquals(this.defaultAdmin);
+    this.admin.set(newAdmin);
+
+    // set lastUpdate to current block height
+    const lastUpdate = this.lastUpdate.get();
+    this.lastUpdate.assertEquals(lastUpdate);
+
+    const blockHeight = this.network.blockchainLength.get();
+    this.network.blockchainLength.assertEquals(blockHeight);
+
+    this.lastUpdate.set(blockHeight);
+  }
+
+  @method
+  public updateRewardsPerBlock(proof: ProgramProof, newRewardPerBlock: UInt64) {
+    proof.verify();
+
+    const { permissionUntilBlockHeight } = proof.publicInput;
+    const blockHeight = this.network.blockchainLength.get();
+    this.network.blockchainLength.assertEquals(blockHeight);
+    blockHeight.assertLessThan(permissionUntilBlockHeight);
+
+    const rewardPerBlock = this.rewardPerBlock.get();
+    this.rewardPerBlock.assertEquals(rewardPerBlock);
+    this.rewardPerBlock.set(newRewardPerBlock);
+  }
+
+  public getDelegatorRecord(address: PublicKey): DelegatorRecord {
+    const state = OffchainState.fromParent(
+      this.root,
+      DelegatorRecord,
+      Farm.addressToKey(address)
+    );
+    state.contract = this;
+    const defaultDelegatorRecord = new DelegatorRecord({
       accumulatedRewardPerShareStart: UInt64.from(0),
       balance: UInt64.from(0),
     });
-    return this.delegators.getOrDefault<PublicKey, DelegatorRecord>(
-      DelegatorRecord,
-      Farm.addressToKey(address),
-      defaultRecord
-    );
+    return state.getOrDefault(defaultDelegatorRecord);
   }
 
   public setDelegatorRecord(
     address: PublicKey,
     delegatorRecord: DelegatorRecord
-  ): [DelegatorRecord, OffchainState<PublicKey, DelegatorRecord>] {
-    return this.delegators.set<PublicKey, DelegatorRecord>(
+  ) {
+    const state = OffchainState.fromParent(
+      this.root,
       DelegatorRecord,
-      Farm.addressToKey(address),
-      delegatorRecord
+      Farm.addressToKey(address)
     );
+    state.contract = this;
+    state.set(delegatorRecord);
   }
 
   @method
@@ -204,17 +250,12 @@ export class Farm extends OffchainStateContract {
     //this.updatePoolWithRewards();
     const { address, amount } = action.payload;
 
-    // const state = OffchainState.fromParent(this.root, DelegatorRecord, Farm.addressToKey(address));
-    // state.contract = this;
-    // const record0 = state.getOrDefault(new DelegatorRecord({ accumulatedRewardPerShareStart: UInt64.from(10), balance: UInt64.from(22) }));
-    // state.set(new DelegatorRecord({ accumulatedRewardPerShareStart: UInt64.from(10), balance: record0.balance.add(UInt64.from(10)) }));
-
     // const afterSave = state.get();
     // Circuit.log('afterSave should be 32', afterSave);
 
     // to be called regardless of action type
     const farmData = this.farmData.get(); // 1x get on farmData in root
-    const [delegatorRecord] = this.getDelegatorRecord(address); // 1x get on nested map => 1x get delegatorsMap in root
+    const delegatorRecord = this.getDelegatorRecord(address); // 1x get on nested map => 1x get delegatorsMap in root
 
     const userReward = this.calculateReward(farmData, delegatorRecord);
     // todo: send userReward to user (!)
@@ -257,8 +298,8 @@ export class Farm extends OffchainStateContract {
       totalStakedBalance: newTotalStakedBalance,
     });
     this.farmData.set(newFarmData);
-    // this.emitEvent('totalStakedBalance', newFarmData.totalStakedBalance)
-    // this.emitEvent('userReward', userReward);
+    this.emitEvent('totalStakedBalance', newFarmData.totalStakedBalance);
+    this.emitEvent('userReward', userReward);
   }
 
   public reduce(rootHash: Field, action: Action): Field {
@@ -276,7 +317,6 @@ export class Farm extends OffchainStateContract {
 
     const pendingActions = this.reducer.getActions({
       fromActionHash: actionsHash,
-      // eslint-disable-next-line snarkyjs/no-if-in-circuit
     });
 
     const currentRootHash = this.root.getRootHash();
@@ -284,6 +324,7 @@ export class Farm extends OffchainStateContract {
      * Fail silently, until the following issue is resolved:
      * https://discord.com/channels/484437221055922177/1081186784622424154
      */
+    // eslint-disable-next-line snarkyjs/no-if-in-circuit
     if (!this.virtualStorage?.data) {
       console.log('Skipping execution, because no virtual storage was found');
       return;

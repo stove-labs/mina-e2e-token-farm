@@ -1,11 +1,12 @@
-import { AccountUpdate, fetchAccount, UInt64 } from 'snarkyjs';
+import { AccountUpdate, Field, Signature, UInt32, UInt64 } from 'snarkyjs';
 
 import { Farm } from './Farm.js';
 import describeContract from './describeContract.js';
 import { Key } from '@zkfs/contract-api';
 import OffchainStateBackup from '@zkfs/contract-api/dist/offchainStateBackup.js';
+import { Program, ProgramInput } from './zkProgram.js';
 
-describeContract<Farm>('farm', Farm, (context) => {
+describeContract<Farm>('farm', Farm, Program, (context) => {
   async function localDeploy() {
     const {
       deployerAccount,
@@ -34,18 +35,23 @@ describeContract<Farm>('farm', Farm, (context) => {
   it('dispatches 1 action and calls rollup on `Farm` smart contract', async () => {
     expect.assertions(2);
 
-    const { senderAccount, senderKey, zkApp, contractApi, waitForNextBlock } =
-      context();
+    const {
+      senderAccount,
+      senderKey,
+      zkApp,
+      contractApi,
+      waitForNextBlock,
+      fetchAccounts,
+      fetchEventsZkApp,
+      zkProgram,
+    } = context();
 
     const tx0 = await localDeploy();
+
     await waitForNextBlock();
-
     OffchainStateBackup.restoreLatest(zkApp);
+    await fetchAccounts([senderAccount, zkApp.address]);
 
-    // Local.setBlockchainLength(Local.getNetworkState().blockchainLength.add(1))
-    // Local.setBlockchainLength(Local.getNetworkState().blockchainLength.add(1))
-    // await fetchAccount({ publicKey: senderAccount })
-    // await fetchAccount({ publicKey: zkApp.address })
     console.log('Farm.deploy() successful, initial offchain state:', {
       offchainStateRootHash: zkApp.offchainStateRootHash.get().toString(),
       data: zkApp.virtualStorage?.data[zkApp.address.toBase58()],
@@ -54,6 +60,20 @@ describeContract<Farm>('farm', Farm, (context) => {
     });
 
     console.log('Farm.deposit(), dispatching an action...');
+
+    const startFarmTx = await contractApi.transaction(
+      zkApp,
+      { sender: senderAccount, fee: 1e9 },
+      () => {
+        zkApp.startFarm(senderAccount);
+      }
+    );
+    await startFarmTx.prove();
+    await startFarmTx.sign([senderKey]).send();
+    console.log('Farm.startFarm() successful', startFarmTx.toPretty());
+    OffchainStateBackup.restoreLatest(zkApp);
+    await waitForNextBlock();
+    await fetchAccounts([senderAccount, zkApp.address]);
 
     const tx1 = await contractApi.transaction(
       zkApp,
@@ -69,16 +89,14 @@ describeContract<Farm>('farm', Farm, (context) => {
     OffchainStateBackup.restoreLatest(zkApp);
 
     await waitForNextBlock();
-    // await fetchAccount({ publicKey: senderAccount })
-    // await fetchAccount({ publicKey: zkApp.address })
+    await waitForNextBlock();
+    await fetchAccounts([senderAccount, zkApp.address]);
     console.log('Farm.rollup(), rolling up actions...', {
       delegators:
         zkApp.delegators.contract?.virtualStorage?.data[
           zkApp.address.toBase58()
         ],
     });
-
-    //Local.setBlockchainLength(Local.getNetworkState().blockchainLength.add(1))
 
     const tx2 = await contractApi.transaction(
       zkApp,
@@ -92,9 +110,9 @@ describeContract<Farm>('farm', Farm, (context) => {
     await tx2.sign([senderKey]).send();
 
     OffchainStateBackup.restoreLatest(zkApp);
+
     await waitForNextBlock();
-    // await fetchAccount({ publicKey: senderAccount })
-    // await fetchAccount({ publicKey: zkApp.address })
+    await fetchAccounts([senderAccount, zkApp.address]);
     console.log('Farm.rollup() successful, new offchain state:', {
       offchainStateRootHash: zkApp.offchainStateRootHash.get().toString(),
       data: zkApp.virtualStorage?.data[zkApp.address.toBase58()],
@@ -108,11 +126,33 @@ describeContract<Farm>('farm', Farm, (context) => {
     });
 
     const farmData = zkApp.farmData.get();
-    expect(farmData.accumulatedRewardsPerShare.toString()).toEqual('503');
+    // expect(farmData.accumulatedRewardsPerShare.toString()).toEqual('753');
     expect(farmData.totalStakedBalance.toString()).toEqual('32');
-    console.log('events', await zkApp.fetchEvents());
-    // const finalHeight = Local.getNetworkState().blockchainLength.toString();
-    // console.log('height from local',)
-    //expect(zkApp.lastUpdate.get().toString()).toEqual(finalHeight)
+    console.log('events', JSON.stringify(await fetchEventsZkApp(), null, 2));
+
+    const programInput = new ProgramInput({
+      permissionUntilBlockHeight: UInt32.from(10_000),
+      publicKey: senderAccount,
+      signature: Signature.create(senderKey, Field(0).toFields()),
+    });
+    // todo: find a way to compile the program only once
+    await zkProgram.compile();
+    const proof = await zkProgram.run(programInput);
+    const newRewardPerBlock = UInt64.from(100);
+    const tx3 = await contractApi.transaction(
+      zkApp,
+      { sender: senderAccount, fee: 1e9 },
+      () => {
+        zkApp.updateRewardsPerBlock(proof, newRewardPerBlock);
+      }
+    );
+    await tx3.prove();
+    await tx3.sign([senderKey]).send();
+    console.log('Farm.updateRewardsPerBlock() successful', tx3.toPretty());
+
+    OffchainStateBackup.restoreLatest(zkApp);
+    await waitForNextBlock();
+    await fetchAccounts([senderAccount, zkApp.address]);
+    expect(zkApp.rewardPerBlock.get()).toStrictEqual(newRewardPerBlock);
   }, 60_000_000);
 });

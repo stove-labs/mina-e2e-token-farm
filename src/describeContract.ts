@@ -12,6 +12,7 @@ import { ContractApi, type OffchainStateContract } from '@zkfs/contract-api';
 import config from '../config.json';
 import berkeleyAccount from '../keys/berkeley.json';
 import { waitUntilNextBlock } from './network';
+import { type Program } from './zkProgram';
 
 interface ContractTestContext<ZkApp extends OffchainStateContract> {
   deployerAccount: PublicKey;
@@ -25,6 +26,7 @@ interface ContractTestContext<ZkApp extends OffchainStateContract> {
   waitForNextBlock: () => Promise<void>;
   fetchAccounts: (publicKey: PublicKey[]) => Promise<void>;
   fetchEventsZkApp: () => Promise<any>;
+  zkProgram: typeof Program;
 }
 
 let hasProofsEnabled = false;
@@ -49,6 +51,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
   name: string,
   // eslint-disable-next-line @typescript-eslint/prefer-readonly-parameter-types
   Contract: typeof OffchainStateContract,
+  zkProgram: typeof Program,
   testCallback: (context: () => ContractTestContext<ZkApp>) => void
 ) {
   describe(name, () => {
@@ -66,6 +69,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
         console.log('analyzed methods', analyzedMethods);
 
         await withTimer('compile', async () => {
+          await zkProgram.compile();
           await Contract.compile();
         });
       }
@@ -163,6 +167,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
         waitForNextBlock,
         fetchAccounts,
         fetchEventsZkApp,
+        zkProgram,
       };
     });
 
