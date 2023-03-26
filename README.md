@@ -1,6 +1,6 @@
 # Mina zkApp: Farm
 
-This template uses TypeScript.
+This documentation is WIP.
 
 ## How to build
 
