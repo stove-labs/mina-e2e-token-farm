@@ -16,6 +16,7 @@
   "scripts": {
     "build": "tsc",
     "buildw": "tsc --watch",
+    "commit": "cz",
     "coverage": "node --experimental-vm-modules --experimental-wasm-threads node_modules/jest/bin/jest.js --coverage",
     "format": "prettier --write --ignore-unknown **/*",
     "prepare": "husky install",
@@ -35,6 +36,8 @@
     "@types/jest": "^27.0.3",
     "@typescript-eslint/eslint-plugin": "^5.5.0",
     "@typescript-eslint/parser": "^5.5.0",
+    "commitizen": "^4.3.0",
+    "cz-conventional-changelog": "^3.3.0",
     "eslint": "^8.7.0",
     "eslint-plugin-snarkyjs": "^0.1.0",
     "husky": "^7.0.1",
@@ -45,6 +48,15 @@
     "typescript": "^4.7.2"
   },
   "peerDependencies": {
-    "snarkyjs": "0.9.*"
+    "snarkyjs": "^0.9.4"
+  },
+  "dependencies": {
+    "@zkfs/contract-api": "^0.1.9-develop.159",
+    "@zkfs/safe-math": "^0.1.1-develop.168"
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
+    }
   }
 }

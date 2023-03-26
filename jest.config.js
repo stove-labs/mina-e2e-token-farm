@@ -18,6 +18,8 @@ export default {
   ],
   modulePathIgnorePatterns: ['<rootDir>/build/'],
   moduleNameMapper: {
+    '../../../node_modules/snarkyjs/dist/(.*)':
+      '<rootDir>/node_modules/snarkyjs/dist/$1',
     '^(\\.{1,2}/.+)\\.js$': '$1',
   },
 };
