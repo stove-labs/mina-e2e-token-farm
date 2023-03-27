@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc",
     "buildw": "tsc --watch",
-    "requestFaucet": "ts-node-esm scripts/faucet.ts",
+    "init:account": "ts-node-esm scripts/faucet.ts",
     "commit": "cz",
     "coverage": "node --experimental-vm-modules --experimental-wasm-threads node_modules/jest/bin/jest.js --coverage",
     "format": "prettier --write --ignore-unknown **/*",
