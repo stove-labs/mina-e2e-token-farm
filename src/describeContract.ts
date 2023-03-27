@@ -8,6 +8,8 @@ import {
   fetchAccount,
 } from 'snarkyjs';
 import { ContractApi, type OffchainStateContract } from '@zkfs/contract-api';
+import * as dotenv from 'dotenv';
+dotenv.config();
 
 import config from '../config.json';
 import berkeleyAccount from '../keys/berkeley.json';
@@ -30,7 +32,7 @@ interface ContractTestContext<ZkApp extends OffchainStateContract> {
 }
 
 let hasProofsEnabled = false;
-const deployToBerkeley = true;
+const deployToBerkeley = Boolean(process.env.TEST_ON_BERKELEY?.toLowerCase());
 
 if (deployToBerkeley) {
   hasProofsEnabled = true;
