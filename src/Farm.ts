@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/prefer-readonly-parameter-types */
 /* eslint-disable new-cap */
+import { Token } from '@stove-labs/mip-token-standard/packages/token';
 import {
   Key,
   OffchainState,
@@ -23,6 +24,8 @@ import {
   AccountUpdate,
   UInt32,
   Bool,
+  PrivateKey,
+  isReady,
 } from 'snarkyjs';
 
 import { Action } from './actions/actions.js';
@@ -38,7 +41,12 @@ class FarmData extends Struct({
   totalStakedBalance: UInt64,
 }) {}
 
+await isReady;
+
 export class Farm extends OffchainStateContract {
+  public static tokenSmartContractAddress: PublicKey =
+    PrivateKey.random().toPublicKey();
+
   override rollingStateOptions = {
     shouldEmitEvents: false,
     shouldEmitPrecondition: true,
@@ -104,6 +112,13 @@ export class Farm extends OffchainStateContract {
       editState: Permissions.proofOrSignature(),
       send: Permissions.signature(),
     });
+  }
+
+  public get tokenContract() {
+    if (!Farm.tokenSmartContractAddress) {
+      throw new Error('Token smart contract address unknown!');
+    }
+    return new Token(Farm.tokenSmartContractAddress);
   }
 
   /*
@@ -174,6 +189,15 @@ export class Farm extends OffchainStateContract {
   @withOffchainState
   public deposit(address: PublicKey, amount: UInt64) {
     AccountUpdate.create(address).requireSignature();
+    // https://github.com/MinaProtocol/MIPs/blob/1bf8ff74773d41092b94eff1b2c6e5f881f6003c/MIPS/mip-zkapps.md#token-mechanics
+    const fromAccountUpdate = AccountUpdate.create(address, this.tokenId);
+    fromAccountUpdate.balance.subInPlace(amount);
+    fromAccountUpdate.body.mayUseToken =
+      AccountUpdate.MayUseToken.InheritFromParent;
+
+    this.balance.addInPlace(amount);
+    this.self.body.mayUseToken = AccountUpdate.MayUseToken.ParentsOwnToken;
+    this.tokenContract.approveAccountUpdate(this.self);
 
     this.reducer.dispatch(Action.deposit(address, amount));
   }

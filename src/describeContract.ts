@@ -6,8 +6,11 @@ import {
   PrivateKey,
   type PublicKey,
   fetchAccount,
+  AccountUpdate,
 } from 'snarkyjs';
 import { ContractApi, type OffchainStateContract } from '@zkfs/contract-api';
+import { Token } from '@stove-labs/mip-token-standard/packages/token';
+
 import * as dotenv from 'dotenv';
 dotenv.config();
 
@@ -29,6 +32,7 @@ interface ContractTestContext<ZkApp extends OffchainStateContract> {
   fetchAccounts: (publicKey: PublicKey[]) => Promise<void>;
   fetchEventsZkApp: () => Promise<any>;
   zkProgram: typeof Program;
+  token: Token;
 }
 
 let hasProofsEnabled = false;
@@ -84,7 +88,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
     // eslint-disable-next-line @typescript-eslint/init-declarations
     let context: ContractTestContext<ZkApp>;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       let localBlockchain = Mina.LocalBlockchain({
         proofsEnabled: hasProofsEnabled,
         enforceTransactionLimits: true,
@@ -142,18 +146,36 @@ function describeContract<ZkApp extends OffchainStateContract>(
         }
       }
 
+      const tokenKey = PrivateKey.random();
+      const tokenAccount = tokenKey.toPublicKey();
+      console.log('tokenAccount', tokenAccount.toBase58());
+      console.log('senderAccount', senderAccount.toBase58());
+      const token = new Token(tokenAccount);
+
+      const deployTokenTx = await Mina.transaction(senderAccount, () => {
+        AccountUpdate.fundNewAccount(senderAccount);
+        token.deploy();
+      });
+      deployTokenTx.sign([senderKey, tokenKey]);
+      await deployTokenTx.prove();
+      await deployTokenTx.send();
+      console.log(deployTokenTx.toPretty());
+
       const zkAppPrivateKey = PrivateKey.random();
       const zkAppAddress = zkAppPrivateKey.toPublicKey();
       console.log('zkAppAddress', zkAppAddress.toBase58());
 
-      const zkApp = new Contract(zkAppAddress) as ZkApp;
+      const zkApp = new Contract(zkAppAddress, token.token.id) as ZkApp;
+
       const contractApi = new ContractApi();
+
+      console.log('token id is', token.token.id.toString());
 
       async function fetchEventsZkApp(): Promise<any> {
         if (deployToBerkeley) {
           return await zkApp.fetchEvents();
         } else {
-          return localBlockchain.fetchEvents(zkAppAddress);
+          return localBlockchain.fetchEvents(zkAppAddress, token.token.id);
         }
       }
 
@@ -170,6 +192,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
         fetchAccounts,
         fetchEventsZkApp,
         zkProgram,
+        token,
       };
     });
 

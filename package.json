@@ -24,7 +24,8 @@
     "test": "node --experimental-vm-modules --experimental-wasm-threads node_modules/jest/bin/jest.js",
     "test:berkeley": "TEST_ON_BERKELEY=true npm run test",
     "testw": "node --experimental-vm-modules --experimental-wasm-threads node_modules/jest/bin/jest.js --watch",
-    "lint": "npx eslint src/* --fix"
+    "lint": "npx eslint src/* --fix",
+    "postinstall": "cd node_modules/@stove-labs/mip-token-standard/ && npm run build"
   },
   "lint-staged": {
     "**/*": [
@@ -56,6 +57,8 @@
     "snarkyjs": "^0.9.4"
   },
   "dependencies": {
+    "@stove-labs/mip-token-standard": "github:stove-labs/mip-token-standard",
+    "@stove-labs/token": "file:@stove-labs/mip-token-standard/packages/token",
     "@zkfs/contract-api": "^0.1.9-develop.159",
     "@zkfs/safe-math": "^0.1.1-develop.168"
   },
