@@ -189,7 +189,8 @@ export class Farm extends OffchainStateContract {
   @withOffchainState
   public deposit(address: PublicKey, amount: UInt64) {
     // otherwise range error call stack exceeded
-    // AccountUpdate.create(address).requireSignature();
+    AccountUpdate.create(address).requireSignature();
+    this.tokenContract.transfer(address, this.address, amount);
 
     this.reducer.dispatch(Action.deposit(address, amount));
   }

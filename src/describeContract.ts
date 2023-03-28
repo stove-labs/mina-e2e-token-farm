@@ -36,7 +36,7 @@ interface ContractTestContext<ZkApp extends OffchainStateContract> {
   localBlockchain: any;
 }
 
-let hasProofsEnabled = false;
+let hasProofsEnabled = true;
 const deployToBerkeley = Boolean(process.env.TEST_ON_BERKELEY?.toLowerCase());
 
 if (deployToBerkeley) {
@@ -153,10 +153,13 @@ function describeContract<ZkApp extends OffchainStateContract>(
       console.log('senderAccount', senderAccount.toBase58());
       const token = new Token(tokenAccount);
 
-      const deployTokenTx = await Mina.transaction(senderAccount, () => {
-        AccountUpdate.fundNewAccount(senderAccount);
-        token.deploy();
-      });
+      const deployTokenTx = await Mina.transaction(
+        { sender: senderAccount, fee: 1e9 },
+        () => {
+          AccountUpdate.fundNewAccount(senderAccount);
+          token.deploy();
+        }
+      );
       deployTokenTx.sign([senderKey, tokenKey]);
       await deployTokenTx.prove();
       await deployTokenTx.send();
@@ -166,7 +169,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
       const zkAppAddress = zkAppPrivateKey.toPublicKey();
       console.log('zkAppAddress', zkAppAddress.toBase58());
 
-      const zkApp = new Contract(zkAppAddress, token.token.id) as ZkApp;
+      const zkApp = new Contract(zkAppAddress) as ZkApp;
 
       const contractApi = new ContractApi();
 
