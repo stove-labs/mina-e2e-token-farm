@@ -188,16 +188,8 @@ export class Farm extends OffchainStateContract {
   @method
   @withOffchainState
   public deposit(address: PublicKey, amount: UInt64) {
-    AccountUpdate.create(address).requireSignature();
-    // https://github.com/MinaProtocol/MIPs/blob/1bf8ff74773d41092b94eff1b2c6e5f881f6003c/MIPS/mip-zkapps.md#token-mechanics
-    const fromAccountUpdate = AccountUpdate.create(address, this.tokenId);
-    fromAccountUpdate.balance.subInPlace(amount);
-    fromAccountUpdate.body.mayUseToken =
-      AccountUpdate.MayUseToken.InheritFromParent;
-
-    this.balance.addInPlace(amount);
-    this.self.body.mayUseToken = AccountUpdate.MayUseToken.ParentsOwnToken;
-    this.tokenContract.approveAccountUpdate(this.self);
+    // otherwise range error call stack exceeded
+    // AccountUpdate.create(address).requireSignature();
 
     this.reducer.dispatch(Action.deposit(address, amount));
   }

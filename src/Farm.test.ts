@@ -9,10 +9,8 @@ import {
 
 import { Farm } from './Farm.js';
 import describeContract from './describeContract.js';
-import { ContractApi, Key } from '@zkfs/contract-api';
 import OffchainStateBackup from '@zkfs/contract-api/dist/offchainStateBackup.js';
 import { Program, ProgramInput } from './zkProgram.js';
-import { Token } from '@stove-labs/mip-token-standard/packages/token';
 
 describeContract<Farm>('farm', Farm, Program, (context) => {
   async function localDeploy() {
@@ -63,6 +61,7 @@ describeContract<Farm>('farm', Farm, Program, (context) => {
       fetchEventsZkApp,
       zkProgram,
       token,
+      localBlockchain,
     } = context();
 
     const tx0 = await localDeploy();
@@ -105,12 +104,22 @@ describeContract<Farm>('farm', Farm, Program, (context) => {
       { sender: senderAccount, fee: 1e9 },
       () => {
         zkApp.deposit(senderAccount, UInt64.from(30));
-        //token.approveAccountUpdate(zkApp.self);
+        token.approveAccountUpdate(zkApp.self);
       }
     );
 
     await tx1.prove();
     await tx1.sign([senderKey]).send();
+
+    console.log('deposit', tx1.toPretty());
+
+    console.log({
+      actions: JSON.stringify(
+        localBlockchain.getActions(zkApp.address, zkApp.self.tokenId)[0],
+        null,
+        2
+      ),
+    });
 
     OffchainStateBackup.restoreLatest(zkApp);
     const balanceAfterDeposit = token.balanceOf(senderAccount);

@@ -33,6 +33,7 @@ interface ContractTestContext<ZkApp extends OffchainStateContract> {
   fetchEventsZkApp: () => Promise<any>;
   zkProgram: typeof Program;
   token: Token;
+  localBlockchain: any;
 }
 
 let hasProofsEnabled = false;
@@ -193,6 +194,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
         fetchEventsZkApp,
         zkProgram,
         token,
+        localBlockchain,
       };
     });
 
