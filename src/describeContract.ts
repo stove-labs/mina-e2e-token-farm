@@ -54,6 +54,11 @@ async function withTimer<Result>(
   return result;
 }
 
+await isReady;
+
+const tokenKey = PrivateKey.random();
+const tokenAccount = tokenKey.toPublicKey();
+
 function describeContract<ZkApp extends OffchainStateContract>(
   name: string,
   // eslint-disable-next-line @typescript-eslint/prefer-readonly-parameter-types
@@ -77,6 +82,8 @@ function describeContract<ZkApp extends OffchainStateContract>(
 
         await withTimer('compile', async () => {
           await zkProgram.compile();
+          await Token.compile();
+          (Contract as any).tokenSmartContractAddress = tokenAccount;
           await Contract.compile();
         });
       }
@@ -147,8 +154,6 @@ function describeContract<ZkApp extends OffchainStateContract>(
         }
       }
 
-      const tokenKey = PrivateKey.random();
-      const tokenAccount = tokenKey.toPublicKey();
       console.log('tokenAccount', tokenAccount.toBase58());
       console.log('senderAccount', senderAccount.toBase58());
       const token = new Token(tokenAccount);
@@ -164,6 +169,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
       await deployTokenTx.prove();
       await deployTokenTx.send();
       console.log(deployTokenTx.toPretty());
+      await waitForNextBlock();
 
       const zkAppPrivateKey = PrivateKey.random();
       const zkAppAddress = zkAppPrivateKey.toPublicKey();
@@ -199,7 +205,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
         token,
         localBlockchain,
       };
-    });
+    }, 50_000_000);
 
     testCallback(() => context);
   });

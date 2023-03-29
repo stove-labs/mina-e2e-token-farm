@@ -12,6 +12,7 @@ import describeContract from './describeContract.js';
 import OffchainStateBackup from '@zkfs/contract-api/dist/offchainStateBackup.js';
 import { Program, ProgramInput } from './zkProgram.js';
 import { Key } from '@zkfs/contract-api';
+import { Token } from '@stove-labs/mip-token-standard/packages/token';
 
 describeContract<Farm>('farm', Farm, Program, (context) => {
   async function localDeploy() {
