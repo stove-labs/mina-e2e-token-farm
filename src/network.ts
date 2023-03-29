@@ -8,7 +8,7 @@ import config from '../config.json';
  * @param [interval=30000] - the time in milliseconds between each check.
  */
 export async function waitUntilNextBlock(
-  retries = 20,
+  retries = 40,
   interval = 30000
 ): Promise<void> {
   // eslint-disable-next-line no-async-promise-executor

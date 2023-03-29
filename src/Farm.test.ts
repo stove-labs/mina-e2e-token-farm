@@ -1,10 +1,18 @@
-import { AccountUpdate, Field, Signature, UInt32, UInt64 } from 'snarkyjs';
+import {
+  AccountUpdate,
+  Circuit,
+  Field,
+  Signature,
+  UInt32,
+  UInt64,
+} from 'snarkyjs';
 
 import { Farm } from './Farm.js';
 import describeContract from './describeContract.js';
-import { Key } from '@zkfs/contract-api';
 import OffchainStateBackup from '@zkfs/contract-api/dist/offchainStateBackup.js';
 import { Program, ProgramInput } from './zkProgram.js';
+import { Key } from '@zkfs/contract-api';
+import { Token } from '@stove-labs/mip-token-standard/packages/token';
 
 describeContract<Farm>('farm', Farm, Program, (context) => {
   async function localDeploy() {
@@ -14,14 +22,24 @@ describeContract<Farm>('farm', Farm, Program, (context) => {
       zkAppPrivateKey,
       zkApp,
       contractApi,
+      token,
+      senderAccount,
     } = context();
+
+    Farm.tokenSmartContractAddress = token.address;
 
     const tx = await contractApi.transaction(
       zkApp,
       { sender: deployerAccount, fee: 1e9 },
       () => {
-        AccountUpdate.fundNewAccount(deployerAccount);
+        AccountUpdate.fundNewAccount(deployerAccount, 2);
         zkApp.deploy();
+        console.log(
+          'zk app has token contract address',
+          zkApp.tokenContract.address.toBase58()
+        );
+        token.approveAccountUpdate(zkApp.self);
+        token.mint(senderAccount, UInt64.from(32));
       }
     );
     await tx.prove();
@@ -44,6 +62,8 @@ describeContract<Farm>('farm', Farm, Program, (context) => {
       fetchAccounts,
       fetchEventsZkApp,
       zkProgram,
+      token,
+      localBlockchain,
     } = context();
 
     const tx0 = await localDeploy();
@@ -51,6 +71,9 @@ describeContract<Farm>('farm', Farm, Program, (context) => {
     await waitForNextBlock();
     OffchainStateBackup.restoreLatest(zkApp);
     await fetchAccounts([senderAccount, zkApp.address]);
+
+    const balance = token.balanceOf(senderAccount);
+    Circuit.log('balance after mint should be 32', balance);
 
     console.log('Farm.deploy() successful, initial offchain state:', {
       offchainStateRootHash: zkApp.offchainStateRootHash.get().toString(),
@@ -61,11 +84,14 @@ describeContract<Farm>('farm', Farm, Program, (context) => {
 
     console.log('Farm.deposit(), dispatching an action...');
 
+    console.log('token id in zkApp', zkApp.token.id.toString());
+
     const startFarmTx = await contractApi.transaction(
       zkApp,
       { sender: senderAccount, fee: 1e9 },
       () => {
         zkApp.startFarm(senderAccount);
+        token.approveAccountUpdate(zkApp.self);
       }
     );
     await startFarmTx.prove();
@@ -79,6 +105,7 @@ describeContract<Farm>('farm', Farm, Program, (context) => {
       zkApp,
       { sender: senderAccount, fee: 1e9 },
       () => {
+        AccountUpdate.fundNewAccount(senderAccount);
         zkApp.deposit(senderAccount, UInt64.from(30));
       }
     );
@@ -86,7 +113,28 @@ describeContract<Farm>('farm', Farm, Program, (context) => {
     await tx1.prove();
     await tx1.sign([senderKey]).send();
 
+    console.log('deposit', tx1.toPretty());
+
+    // console.log({
+    //   actions: JSON.stringify(
+    //     localBlockchain.getActions(zkApp.address, zkApp.self.tokenId)[0],
+    //     null,
+    //     2
+    //   ),
+    // });
+
     OffchainStateBackup.restoreLatest(zkApp);
+    const balanceAfterDeposit = token.balanceOf(senderAccount);
+    Circuit.log(
+      'balance after deposit should be 2 for sender',
+      balanceAfterDeposit
+    );
+
+    const balanceZkAppAfterDepositDispatch = token.balanceOf(zkApp.address);
+    Circuit.log(
+      'balance after deposit should be 30 for zkApp',
+      balanceZkAppAfterDepositDispatch
+    );
 
     await waitForNextBlock();
     await waitForNextBlock();
@@ -98,11 +146,14 @@ describeContract<Farm>('farm', Farm, Program, (context) => {
         ],
     });
 
+    Circuit.log('root hash before rollup', zkApp.offchainStateRootHash.get());
+
     const tx2 = await contractApi.transaction(
       zkApp,
       { sender: senderAccount, fee: 1e9 },
       () => {
         zkApp.rollup();
+        token.approveAccountUpdate(zkApp.self);
       }
     );
 
@@ -110,6 +161,7 @@ describeContract<Farm>('farm', Farm, Program, (context) => {
     await tx2.sign([senderKey]).send();
 
     OffchainStateBackup.restoreLatest(zkApp);
+    Circuit.log('root hash after rollup', zkApp.offchainStateRootHash.get());
 
     await waitForNextBlock();
     await fetchAccounts([senderAccount, zkApp.address]);
@@ -144,6 +196,7 @@ describeContract<Farm>('farm', Farm, Program, (context) => {
       { sender: senderAccount, fee: 1e9 },
       () => {
         zkApp.updateRewardsPerBlock(proof, newRewardPerBlock);
+        token.approveAccountUpdate(zkApp.self);
       }
     );
     await tx3.prove();

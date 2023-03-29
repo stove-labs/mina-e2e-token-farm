@@ -8,6 +8,3 @@ coverage
 
 # System
 .DS_Store
-
-# Never commit keys to Git!
-keys
