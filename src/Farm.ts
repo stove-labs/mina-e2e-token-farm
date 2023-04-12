@@ -47,11 +47,11 @@ export class Farm extends OffchainStateContract {
   public static tokenSmartContractAddress: PublicKey =
     PrivateKey.random().toPublicKey();
 
-  override rollingStateOptions = {
-    shouldEmitEvents: false,
-    shouldEmitPrecondition: true,
-    shouldEmitAccountUpdates: true,
-  };
+  /**
+   * Deactivates events emitted by offchain storage package ZKFS,
+   * until event limits are increased above 16.
+   */
+  override rollingStateOptions = deactivateEvents;
 
   events = {
     totalStakedBalance: UInt64,
