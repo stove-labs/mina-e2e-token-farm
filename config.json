@@ -2,7 +2,7 @@
   "networks": {
     "berkeley": {
       "mina": "https://proxy.berkeley.minaexplorer.com/graphql",
-      "archive": "https://archive.berkeley.minaexplorer.com/",
+      "archive": "https://archive-node-api.p42.xyz/",
       "keyPath": "keys/berkeley.json"
     }
   }
