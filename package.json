@@ -54,12 +54,11 @@
     "typescript": "^4.7.2"
   },
   "peerDependencies": {
-    "snarkyjs": "^0.9.4"
+    "snarkyjs": "^0.9.6"
   },
   "dependencies": {
     "@stove-labs/mip-token-standard": "github:stove-labs/mip-token-standard",
-    "@stove-labs/token": "file:@stove-labs/mip-token-standard/packages/token",
-    "@zkfs/contract-api": "^0.1.9-develop.159",
+    "@zkfs/contract-api": "^0.1.9-develop.172",
     "@zkfs/safe-math": "^0.1.1-develop.168"
   },
   "config": {
