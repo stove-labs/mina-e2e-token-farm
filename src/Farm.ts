@@ -75,8 +75,8 @@ export class Farm extends OffchainStateContract {
   events = {
     totalStakedBalance: UInt64,
     userReward: UInt64,
+    accumulatedRewardsPerShare: UInt64,
   };
-  accumulatedRewardsPerShare: UInt64;
 
   public fixedPointAccuracy = UInt64.from(1_000_000);
 
@@ -213,7 +213,6 @@ export class Farm extends OffchainStateContract {
   @method
   @withOffchainState
   public deposit(address: PublicKey, amount: UInt64) {
-    // otherwise range error call stack exceeded
     AccountUpdate.create(address).requireSignature();
     this.tokenContract.transfer(address, this.address, amount);
 
@@ -280,7 +279,6 @@ export class Farm extends OffchainStateContract {
       delegatorRecord.accumulatedRewardPerShareStart
     );
     const delegatorRewardWithAccuracy = accForUser.mul(delegatorRecord.balance);
-
     const delegatorReward = delegatorRewardWithAccuracy.div(
       this.fixedPointAccuracy
     );
@@ -296,6 +294,7 @@ export class Farm extends OffchainStateContract {
     const userReward = this.calculateReward(farmData, delegatorRecord);
 
     // not done here: send reward to user
+    this.emitEvent('userReward', userReward);
 
     const newBalanceAfterDeposit = delegatorRecord.balance.add(amount);
 
@@ -335,8 +334,6 @@ export class Farm extends OffchainStateContract {
     this.farmData.set(newFarmData);
 
     this.emitEvent('totalStakedBalance', newFarmData.totalStakedBalance);
-
-    this.emitEvent('userReward', userReward);
     this.emitEvent(
       'accumulatedRewardsPerShare',
       newFarmData.accumulatedRewardsPerShare
@@ -360,13 +357,15 @@ export class Farm extends OffchainStateContract {
     });
 
     // this is a temporary workaround for https://github.com/o1-labs/snarkyjs/issues/852
-    // comment this out for local blockchain testing!
+    // start
     Circuit.asProver(() => {
       // eslint-disable-next-line snarkyjs/no-if-in-circuit
       if (!actionsHash.equals(Reducer.initialActionsHash).toBoolean()) {
         pendingActions = pendingActions.slice(1);
       }
     });
+    // end
+    // comment this out for local blockchain testing!
 
     const currentRootHash = this.root.getRootHash();
     /**
