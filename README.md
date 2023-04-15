@@ -31,8 +31,9 @@ The **default flow for an admin** to interact with the zkApp:
   - the proof is valid until a certain block-height
   - sets a new value for `rewardPerBlock` on-chain property
 
-Summary of the Algorithm:
-The algorithm does not generate rewards when the farm has no user deposits (totalStakedBalance = 0). Rewards and corresponding user rewards are only produced in blocks following the initial deposit, with the epoch time being one block. When another user deposits, the algorithm considers the need to distribute future rewards between users according to their stake in the farm, regardless of the characteristics of the first user's record. This reduces the need to update storage to a minimum and makes it suitable for a scalable solution.
+#### Summary of the Algorithm
+
+The algorithm doesn't generate rewards when the farm has no user deposits (totalStakedBalance = 0). Rewards are only produced in blocks following the initial deposit, with the epoch time being one block. When another user deposits, the algorithm considers the need to distribute future rewards between users according to their stake in the farm, without having to update the first user's record. This reduces the need to update storage to a minimum and makes it suitable for a scalable solution.
 
 ### Implementation details
 
@@ -108,6 +109,7 @@ npm run build
 Make sure that this code in method `Farm.rollup()` is commented out:
 
 ```typescript
+// please comment this out in /src/Farm.ts to run tests locally
 Circuit.asProver(() => {
   // eslint-disable-next-line snarkyjs/no-if-in-circuit
   if (!actionsHash.equals(Reducer.initialActionsHash).toBoolean()) {
