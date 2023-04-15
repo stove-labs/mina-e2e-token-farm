@@ -152,7 +152,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
 
       const zkAppPrivateKey = PrivateKey.random();
       const zkAppAddress = zkAppPrivateKey.toPublicKey();
-      console.log('zkAppAddress', zkAppAddress.toBase58());
+      console.log('ZkApp address', zkAppAddress.toBase58());
 
       const zkApp = new Contract(zkAppAddress) as ZkApp;
 
@@ -185,7 +185,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
     waitForNextBlock: () => Promise<void>
   ) {
     const deployTokenTx = await Mina.transaction(
-      { sender: senderAccount, fee: 1e9 },
+      { sender: senderAccount, fee: 2e8 },
       () => {
         AccountUpdate.fundNewAccount(senderAccount);
         token.deploy();
@@ -194,6 +194,7 @@ function describeContract<ZkApp extends OffchainStateContract>(
     deployTokenTx.sign([senderKey, tokenKey]);
     await deployTokenTx.prove();
     await deployTokenTx.send();
+    console.log('Token contract deployed', token.address.toBase58());
     await waitForNextBlock();
   }
 
@@ -267,4 +268,4 @@ function getLatestEvent(events: ZkAppEvents): ZkAppEvent | undefined {
 }
 
 export default describeContract;
-export { withTimer, getEventByType, getLatestEvent };
+export { withTimer, getEventByType, getLatestEvent, ZkAppEvents };
