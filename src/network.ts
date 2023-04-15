@@ -4,12 +4,12 @@ import config from '../config.json';
 /**
  * It waits until the current block height has increased.
  *
- * @param [retries=20] - The number of times to retry before timing out.
- * @param [interval=30000] - the time in milliseconds between each check.
+ * @param [retries=10] - The number of times to retry before timing out.
+ * @param [interval=120000] - the time in milliseconds between each check.
  */
 export async function waitUntilNextBlock(
-  retries = 40,
-  interval = 30000
+  retries = 20,
+  interval = 60000
 ): Promise<void> {
   // eslint-disable-next-line no-async-promise-executor
   await new Promise<void>(async (resolve, reject) => {
@@ -36,8 +36,9 @@ export async function waitUntilNextBlock(
         clearTimeout(timeoutId);
         clearInterval(timerId);
         resolve();
+      } else {
+        console.log(`Retrying in ${interval / 1000} seconds...`);
       }
-      console.log(`Retrying in ${interval / 1000} seconds...`);
     }, interval);
   });
 }

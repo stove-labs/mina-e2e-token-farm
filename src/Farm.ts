@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/prefer-readonly-parameter-types */
 /* eslint-disable new-cap */
-import { Token } from '@stove-labs/mip-token-standard/packages/token';
+import {
+  Token,
+  shareSnarkyMetadata,
+} from '@stove-labs/mip-token-standard/packages/token';
 import {
   Key,
   OffchainState,
@@ -29,6 +32,7 @@ import {
 } from 'snarkyjs';
 
 import { Action } from './actions/actions.js';
+import deactivateEvents from './zkfsConfig.js';
 import { ProgramProof } from './zkProgram.js';
 
 class DelegatorRecord extends Struct({
@@ -41,24 +45,40 @@ class FarmData extends Struct({
   totalStakedBalance: UInt64,
 }) {}
 
+class CustomToken extends Token {
+  public deploy(): void {
+    super.deploy();
+    this.account.permissions.set({
+      ...Permissions.default(),
+      access: Permissions.proof(),
+      send: Permissions.proofOrSignature(),
+    });
+    this.account.tokenSymbol.set('TEST');
+  }
+}
+shareSnarkyMetadata(CustomToken, Token);
+
+export { CustomToken };
+
 await isReady;
 
 export class Farm extends OffchainStateContract {
   public static tokenSmartContractAddress: PublicKey =
     PrivateKey.random().toPublicKey();
 
-  override rollingStateOptions = {
-    shouldEmitEvents: false,
-    shouldEmitPrecondition: true,
-    shouldEmitAccountUpdates: true,
-  };
+  /**
+   * Deactivates events emitted by offchain storage package ZKFS,
+   * until event limits are increased above 16.
+   */
+  override rollingStateOptions = deactivateEvents;
 
   events = {
     totalStakedBalance: UInt64,
     userReward: UInt64,
+    accumulatedRewardsPerShare: UInt64,
   };
-  // should be 1_000_000, reduced for testing purposes
-  public fixedPointAccuracy = UInt64.from(100);
+
+  public fixedPointAccuracy = UInt64.from(1_000_000);
 
   public defaultAdmin = PublicKey.from({ x: Field(0), isOdd: Bool(false) });
 
@@ -76,11 +96,6 @@ export class Farm extends OffchainStateContract {
 
   @state(PublicKey) public admin = State<PublicKey>();
 
-  // removed this for simplicity
-  // @state(UInt64) public paid = State<UInt64>()
-  // @state(UInt64) public totalBlocks = State<UInt64>();
-  // @state(UInt64) public unpaid = State<UInt64>();
-
   public reducer = Reducer({ actionType: Action });
 
   @offchainState() public delegators = OffchainState.fromMap();
@@ -90,25 +105,25 @@ export class Farm extends OffchainStateContract {
   @withOffchainState
   public init() {
     super.init();
-    this.lastUpdate.set(UInt32.from(0));
 
     this.root.setRootHash(OffchainStateMapRoot.initialRootHash);
     this.actionsHash.set(Reducer.initialActionsHash);
     this.admin.set(this.defaultAdmin);
 
+    this.lastUpdate.set(UInt32.from(0));
     // off-chain state
     this.rewardPerBlock.set(UInt64.from(5));
     this.delegators.setRootHash(OffchainStateMapRoot.initialRootHash);
     this.farmData.set(
       new FarmData({
-        accumulatedRewardsPerShare: UInt64.from(3),
-        totalStakedBalance: UInt64.from(2),
+        accumulatedRewardsPerShare: UInt64.from(0),
+        totalStakedBalance: UInt64.from(0),
       })
     );
 
     this.account.permissions.set({
       ...Permissions.default(),
-      editSequenceState: Permissions.proofOrSignature(),
+      editActionState: Permissions.proofOrSignature(),
       editState: Permissions.proofOrSignature(),
       send: Permissions.signature(),
     });
@@ -118,33 +133,38 @@ export class Farm extends OffchainStateContract {
     if (!Farm.tokenSmartContractAddress) {
       throw new Error('Token smart contract address unknown!');
     }
-    return new Token(Farm.tokenSmartContractAddress);
+    return new CustomToken(Farm.tokenSmartContractAddress);
   }
 
   /*
-   *  Setting the admin and lastUpdate to the current block height.
-   *  This method can only be called once.
+   *  Sets the admin of the contract.
+   *  This method can only be called once in the life cycle of the farm.
    */
   @method
-  public startFarm(newAdmin: PublicKey) {
+  public setAdmin(newAdmin: PublicKey) {
     // set admin
     const admin = this.admin.get();
     this.admin.assertEquals(admin);
     // ensure that startFarm can only be called once
     admin.assertEquals(this.defaultAdmin);
-    this.admin.set(newAdmin);
-
-    // set lastUpdate to current block height
-    const lastUpdate = this.lastUpdate.get();
-    this.lastUpdate.assertEquals(lastUpdate);
 
     const blockHeight = this.network.blockchainLength.get();
     this.network.blockchainLength.assertEquals(blockHeight);
 
-    this.lastUpdate.set(blockHeight);
+    this.admin.set(newAdmin);
   }
 
   @method
+  /**
+   * This method updates the rewards per block for the farm.
+   *
+   * It takes in a `ProgramProof` and a `UInt64` value for the new reward per block.
+   * The method first verifies the proof, then checks that the current block height
+   * is less than the permission until block height specified in the proof.
+   * It also checks that the public key in the proof matches the admin key for
+   * the farm. Finally, it sets the new reward per block value in the farm's state.
+   *
+   */
   public updateRewardsPerBlock(proof: ProgramProof, newRewardPerBlock: UInt64) {
     proof.verify();
 
@@ -154,6 +174,11 @@ export class Farm extends OffchainStateContract {
     blockHeight.assertLessThan(permissionUntilBlockHeight);
 
     const rewardPerBlock = this.rewardPerBlock.get();
+    const { publicKey } = proof.publicInput;
+    const admin = this.admin.get();
+    this.admin.assertEquals(admin);
+    publicKey.assertEquals(admin);
+
     this.rewardPerBlock.assertEquals(rewardPerBlock);
     this.rewardPerBlock.set(newRewardPerBlock);
   }
@@ -188,7 +213,6 @@ export class Farm extends OffchainStateContract {
   @method
   @withOffchainState
   public deposit(address: PublicKey, amount: UInt64) {
-    // otherwise range error call stack exceeded
     AccountUpdate.create(address).requireSignature();
     this.tokenContract.transfer(address, this.address, amount);
 
@@ -229,7 +253,6 @@ export class Farm extends OffchainStateContract {
     const rewardPerBlock = this.rewardPerBlock.get();
     this.rewardPerBlock.assertEquals(rewardPerBlock);
     const reward = multiplier.toUInt64().mul(rewardPerBlock);
-    Circuit.log('reward', reward, 'multiplier', multiplier);
 
     const farmData = this.farmData.get();
 
@@ -256,7 +279,6 @@ export class Farm extends OffchainStateContract {
       delegatorRecord.accumulatedRewardPerShareStart
     );
     const delegatorRewardWithAccuracy = accForUser.mul(delegatorRecord.balance);
-
     const delegatorReward = delegatorRewardWithAccuracy.div(
       this.fixedPointAccuracy
     );
@@ -264,19 +286,15 @@ export class Farm extends OffchainStateContract {
   }
 
   public applyAction(action: Action) {
-    //this.updatePoolWithRewards();
     const { address, amount } = action.payload;
 
-    // const afterSave = state.get();
-    // Circuit.log('afterSave should be 32', afterSave);
-
-    // to be called regardless of action type
-    const farmData = this.farmData.get(); // 1x get on farmData in root
-    const delegatorRecord = this.getDelegatorRecord(address); // 1x get on nested map => 1x get delegatorsMap in root
-
+    // to be called for any action type
+    const farmData = this.farmData.get();
+    const delegatorRecord = this.getDelegatorRecord(address);
     const userReward = this.calculateReward(farmData, delegatorRecord);
-    // todo: send userReward to user (!)
-    Circuit.log('user reward', userReward);
+
+    // not done here: send reward to user
+    this.emitEvent('userReward', userReward);
 
     const newBalanceAfterDeposit = delegatorRecord.balance.add(amount);
 
@@ -286,14 +304,14 @@ export class Farm extends OffchainStateContract {
       newBalanceAfterDeposit
     );
 
-    // !! accumulatedRewardPerShare is the same as farm because of claim()
+    // accumulatedRewardPerShare is the same as farm because of claim() (!)
     const newDelegatorRecord = this.createDelegatorRecord(
       farmData.accumulatedRewardsPerShare,
       newBalanceAfterWithdraw
     );
-    this.setDelegatorRecord(address, newDelegatorRecord); // 1x set on nested map => 1x set delegatorsMap in root
+    this.setDelegatorRecord(address, newDelegatorRecord);
 
-    // todo: send staked balance to user "newBalanceAfterDeposit" (!)
+    // not done here: send staked balance to user for withdraw
 
     // case deposit
     const totalStakedBalanceAfterDeposit = Circuit.if(
@@ -308,15 +326,18 @@ export class Farm extends OffchainStateContract {
       safeUint64Sub(totalStakedBalanceAfterDeposit, newBalanceAfterDeposit),
       totalStakedBalanceAfterDeposit
     );
-    Circuit.log('newTotalStakedBalance', newTotalStakedBalance);
 
     const newFarmData = new FarmData({
       accumulatedRewardsPerShare: farmData.accumulatedRewardsPerShare,
       totalStakedBalance: newTotalStakedBalance,
     });
     this.farmData.set(newFarmData);
+
     this.emitEvent('totalStakedBalance', newFarmData.totalStakedBalance);
-    this.emitEvent('userReward', userReward);
+    this.emitEvent(
+      'accumulatedRewardsPerShare',
+      newFarmData.accumulatedRewardsPerShare
+    );
   }
 
   public reduce(rootHash: Field, action: Action): Field {
@@ -329,12 +350,22 @@ export class Farm extends OffchainStateContract {
   @withOffchainState
   public rollup() {
     const actionsHash = this.actionsHash.get();
-
     this.actionsHash.assertEquals(actionsHash);
 
-    const pendingActions = this.reducer.getActions({
-      fromActionHash: actionsHash,
+    let pendingActions = this.reducer.getActions({
+      fromActionState: actionsHash,
     });
+
+    // this is a temporary workaround for https://github.com/o1-labs/snarkyjs/issues/852
+    // start
+    Circuit.asProver(() => {
+      // eslint-disable-next-line snarkyjs/no-if-in-circuit
+      if (!actionsHash.equals(Reducer.initialActionsHash).toBoolean()) {
+        pendingActions = pendingActions.slice(1);
+      }
+    });
+    // end
+    // comment this out for local blockchain testing!
 
     const currentRootHash = this.root.getRootHash();
     /**
@@ -361,7 +392,6 @@ export class Farm extends OffchainStateContract {
         )
       );
 
-    Circuit.log('rollup done');
     this.actionsHash.set(newActionsHash);
     this.root.setRootHash(newRootHash);
   }
