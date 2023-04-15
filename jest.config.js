@@ -1,6 +1,7 @@
 /** @type {import('@ts-jest/dist/types').InitialOptionsTsJest} */
 export default {
   verbose: true,
+  maxWorkers: 1,
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   globals: {
