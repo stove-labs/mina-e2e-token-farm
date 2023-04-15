@@ -20,7 +20,7 @@ At a later stage `rollup()` is called on the zkApp to reduce all pending actions
 Regardless of any user action, the total rewards since the last rollup are calculated and algorithm specific variables are updated (`accumulatedRewardsPerShare`).
 In the case of a _deposit_ action, the zkApp creates the `delegatorRecord`. If a deposit already exists, it claims for the user before it updates the staked balance.
 For _claim_, the application logic calculates the rewards for the specific user.
-For _withdraw_, the application logic first claims, then sets staked balance to 0 in `delegatorRecord`.
+For _withdraw_, the application logic first claims the user's final reward, then sets staked balance to 0 in `delegatorRecord` and reduces totalStakedBalance by user's stake.
 
 The **default flow for an admin** to interact with the zkApp:
 
@@ -30,6 +30,9 @@ The **default flow for an admin** to interact with the zkApp:
   - accepts a proof for authentication/authorization
   - the proof is valid until a certain block-height
   - sets a new value for `rewardPerBlock` on-chain property
+
+Summary of the Algorithm:
+The algorithm does not generate rewards when the farm has no user deposits (totalStakedBalance = 0). Rewards and corresponding user rewards are only produced in blocks following the initial deposit, with the epoch time being one block. When another user deposits, the algorithm considers the need to distribute future rewards between users according to their stake in the farm, regardless of the characteristics of the first user's record. This reduces the need to update storage to a minimum and makes it suitable for a scalable solution.
 
 ### Implementation details
 
@@ -133,7 +136,13 @@ Verification key in `keys/contracts.json`.
 
 ## Expected length of running all tests
 
-Approximately 70 minutes.
+| Environment                    |  length |
+| ------------------------------ | ------: |
+| Running locally without proofs |  11 min |
+| Running locally with proofs    |  30 min |
+| Running on Berkeley            | 120 min |
+
+Please note that the network may experience latency in retrieving the most recent values, potentially causing tests to fail. As a result, it is often required to run the tests repeatedly.
 
 ## License
 
