@@ -22,7 +22,7 @@
     "format": "prettier --write --ignore-unknown **/*",
     "prepare": "husky install",
     "test": "node --experimental-vm-modules --experimental-wasm-threads node_modules/jest/bin/jest.js",
-    "test:berkeley": "TEST_ON_BERKELEY=true npm run test -- --runInBand",
+    "test:berkeley": "TEST_ON_BERKELEY=true npm run test -- --runInBand --forceExit",
     "testw": "node --experimental-vm-modules --experimental-wasm-threads node_modules/jest/bin/jest.js --watch",
     "lint": "npx eslint src/* --fix",
     "postinstall": "cd node_modules/@stove-labs/mip-token-standard/ && npm run build"
